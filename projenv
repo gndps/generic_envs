@@ -1,0 +1,256 @@
+#!/bin/bash
+
+# Root directory for projenv
+PROJECT_ENV_ROOT="$HOME/.projenv"
+PROJECT_STATES_DIR="$PROJECT_ENV_ROOT/project_states"
+FILE_STATES_DIR="$PROJECT_ENV_ROOT/file_states"
+
+# Initialize the necessary directories if they don't exist
+mkdir -p "$PROJECT_STATES_DIR"
+mkdir -p "$FILE_STATES_DIR"
+
+# Help function
+projenv_help() {
+    echo "Usage: projenv.sh [command] [arguments]"
+    echo "Commands:"
+    echo "  init project_alias           Initialize projenv with the current directory"
+    echo "  list|ls                      List all managed projects"
+    echo "  activate project_alias|index Activate a project by alias or index"
+    echo "  remove project_alias|index   Remove a project by alias or index"
+    echo "  cp file_path                 Add a file to the copy buffer"
+    echo "  paste                        Copy the file from the buffer to the current directory"
+    echo "  pasteall                     Paste all files from the buffer to the current directory"
+    echo "  list_files                   List all files in the buffer"
+}
+
+# Function to initialize projenv
+projenv_init() {
+    local project_alias=$1
+    local project_path=$(pwd)
+    local num_files=$(ls "$PROJECT_STATES_DIR" | wc -l)
+    local new_index=$((num_files + 1))
+    local new_file="$PROJECT_STATES_DIR/${new_index}_$project_alias"
+
+    echo "$project_path" > "$new_file"
+    echo "Project $project_alias initialized at $project_path"
+}
+
+# Function to list all managed projects
+projenv_list() {
+    if [[ -d "$PROJECT_STATES_DIR" ]]; then
+        local current_project=$(cat "$PROJECT_ENV_ROOT/active_project" 2>/dev/null)
+        local current_pwd=$(pwd)
+        local current_pwd_project=""
+
+        # Check if current_pwd is a project directory
+        for file in "$PROJECT_STATES_DIR"/*; do
+            if [[ "$current_pwd" == "$(cat "$file")" ]]; then
+                current_pwd_project=$(basename "$file")
+                break
+            fi
+        done
+
+        for file in "$PROJECT_STATES_DIR"/*; do
+            local filename=$(basename "$file")
+            local index="${filename%%_*}"
+            local alias="${filename#*_}"
+            local project_path=$(cat "$file")
+            local prefix=""
+
+            if [[ "$current_project" == "$filename" && "$current_pwd_project" == "$filename" ]]; then
+                prefix="* "
+            elif [[ "$current_pwd_project" == "$filename" ]]; then
+                prefix="** "
+            fi
+
+            echo "$index: ${prefix}$alias ($project_path)"
+        done
+    else
+        echo "No managed projects found."
+    fi
+}
+
+# Function to activate a project
+projenv_activate() {
+    local identifier=$1
+    local target_file=""
+    
+    if [[ "$identifier" =~ ^[0-9]+$ ]]; then
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "^${identifier}_" | head -n 1)
+    else
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "_${identifier}$" | head -n 1)
+    fi
+
+    if [[ -n "$target_file" ]]; then
+        local project_path=$(cat "$PROJECT_STATES_DIR/$target_file")
+        echo "$target_file" > "$PROJECT_ENV_ROOT/active_project"
+        cd "$project_path" || { echo "Failed to change directory to $project_path"; return 1; }
+        echo "Activated project: $identifier ($project_path)"
+    else
+        echo "Error: Project $identifier does not exist."
+    fi
+}
+
+# Function to remove a project
+projenv_remove() {
+    local identifier=$1
+    local target_file=""
+
+    if [[ "$identifier" =~ ^[0-9]+$ ]]; then
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "^${identifier}_" | head -n 1)
+    else
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "_${identifier}$" | head -n 1)
+    fi
+
+    if [[ -n "$target_file" ]]; then
+        rm -f "$PROJECT_STATES_DIR/$target_file"
+        echo "Removed project: $identifier"
+    else
+        echo "Error: Project $identifier does not exist."
+    fi
+}
+
+# Function to add a file to the copy buffer
+projenv_copy_file() {
+    local file_path=$1
+
+    if [[ ! -e "$file_path" ]]; then
+        echo "Error: File $file_path does not exist."
+        return 1
+    fi
+
+    local absolute_path=$(realpath "$file_path")
+    local num_files=$(ls "$FILE_STATES_DIR" | wc -l)
+    local new_index=$((num_files + 1))
+    local new_file="$FILE_STATES_DIR/$new_index"
+
+    echo "$absolute_path" > "$new_file"
+    echo "File $file_path added to the buffer"
+}
+
+# Function to paste the latest file from the buffer
+projenv_paste() {
+    local latest_file=$(ls -v "$FILE_STATES_DIR" | tail -n 1)
+    if [[ -z "$latest_file" ]]; then
+        echo "No files in the buffer."
+        return 1
+    fi
+
+    local file_path=$(cat "$FILE_STATES_DIR/$latest_file")
+    if [[ -d "$file_path" ]]; then
+        if cp -r "$file_path" .; then
+            rm -f "$FILE_STATES_DIR/$latest_file"
+            echo "Pasted directory: $(basename "$file_path")"
+        else
+            echo "Error: Could not copy directory $file_path. Directory consumed anyways."
+            rm -f "$FILE_STATES_DIR/$latest_file"
+        fi
+    else
+        if cp "$file_path" .; then
+            rm -f "$FILE_STATES_DIR/$latest_file"
+            echo "Pasted file: $(basename "$file_path")"
+        else
+            echo "Error: Could not copy $file_path. File consumed anyways."
+            rm -f "$FILE_STATES_DIR/$latest_file"
+        fi
+    fi
+}
+
+
+# Function to paste all files from the buffer
+projenv_pasteall() {
+    while [[ $(ls -A "$FILE_STATES_DIR") ]]; do
+        projenv_paste
+    done
+}
+
+# Function to list all files in the buffer
+projenv_list_files() {
+    if [[ -d "$FILE_STATES_DIR" ]]; then
+        local latest_file=$(ls -v "$FILE_STATES_DIR" | tail -n 1)
+        for file in $(ls -v "$FILE_STATES_DIR"); do
+            if [[ "$file" == "$latest_file" ]]; then
+                echo "* $file: $(cat "$FILE_STATES_DIR/$file")"
+            else
+                echo "  $file: $(cat "$FILE_STATES_DIR/$file")"
+            fi
+        done
+    else
+        echo "No files in the buffer."
+    fi
+}
+
+# Autocompletion function for projenv activate
+_projenv_activate_autocomplete() {
+    local cur_word="${COMP_WORDS[COMP_CWORD]}"
+    local projects=$(ls "$PROJECT_STATES_DIR" | sed 's/^[0-9]*_//')
+
+    COMPREPLY=($(compgen -W "$projects" -- "$cur_word"))
+}
+
+# Register the autocompletion function for projenv activate
+complete -F _projenv_activate_autocomplete projenv
+complete -F _projenv_activate_autocomplete pa
+
+# Main script logic
+projenv() {
+    case "$1" in
+        init)
+            if [[ -n "$2" ]]; then
+                projenv_init "$2"
+            else
+                echo "Error: Project alias is required."
+                projenv_help
+            fi
+            ;;
+        list|ls)
+            projenv_list
+            ;;
+        activate)
+            if [[ -n "$2" ]]; then
+                projenv_activate "$2"
+            else
+                echo "Error: Project alias or index is required."
+                projenv_help
+            fi
+            ;;
+        remove)
+            if [[ -n "$2" ]]; then
+                projenv_remove "$2"
+            else
+                echo "Error: Project alias or index is required."
+                projenv_help
+            fi
+            ;;
+        cp)
+            if [[ -n "$2" ]]; then
+                projenv_copy_file "$2"
+            else
+                echo "Error: File path is required."
+                projenv_help
+            fi
+            ;;
+        paste)
+            projenv_paste
+            ;;
+        pasteall)
+            projenv_pasteall
+            ;;
+        list_files)
+            projenv_list_files
+            ;;
+        *)
+            projenv_help
+            ;;
+    esac
+}
+
+alias pa="projenv activate"
+alias pao="projenv activate && code ."
+alias pls="projenv list"
+alias pin="projenv init"
+alias prm="projenv remove"
+alias cp_="projenv cp"
+alias cpls="projenv list_files"
+alias pst="projenv paste"
+alias pst_all="projenv pasteall"

@@ -1,0 +1,17 @@
+extract_ssh_port() {
+    local host="$1"
+    awk -v host="$host" '
+    $1 == "Host" && $2 == host { inHostBlock = 1 }
+    inHostBlock && $1 == "Port" { print $2; exit }
+    $1 == "Host" && $2 != host { inHostBlock = 0 }
+    ' $HOME/.ssh/config
+}
+
+function list_ssh_hosts() {
+    awk '$1 == "Host" { print $2 }' $HOME/.ssh/config
+}
+
+alias sshcp="cat ~/.ssh/id_rsa.pub | pbcopy"
+alias sshedit="code ~/.ssh"
+alias sshls="list_ssh_hosts"
+

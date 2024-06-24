@@ -1,0 +1,90 @@
+alias se='[[ -n "$VIRTUAL_ENV" ]] && deactivate'
+alias ed='env_d'
+alias edc='env_c'
+alias edcv='env_'
+alias es='env_s'
+# alias pir='uv pip install -r requirements.txt' # pre requisite: pipx install uv or brew install uv
+
+env_ () 
+{ 
+    # create and source
+    local env_name="${1:-$(basename $(pwd))}"
+    env_c $env_name && env_s $env_name
+}
+env_c () 
+{ 
+    # create environment if it doens't exist
+    se # exist current environment if any
+    local env_name="${1:-$(basename $(pwd))}"
+    mkdir -p $HOME/pyenvs
+    env_path=$HOME/pyenvs/$env_name
+    if [ -d "$env_path" ]; then
+        echo "python environment '$env_name' already exist"
+    else
+        echo "Creating python environment using uv: '$env_name' "
+        python3 -m venv $env_path
+        # uv venv $env_path
+    fi
+}
+env_d () 
+{ 
+    local env_name="${1:-$(basename $(pwd))}"
+
+    if [[ "$VIRTUAL_ENV" == *"/$env_name" ]]; then
+        echo "Deactivating python environment: '$env_name'"
+        deactivate
+    fi
+
+    echo "Deleting python environment: '$env_name' "
+    rm -r $HOME/pyenvs/$env_name
+}
+env_ls () 
+{ 
+    echo "Listing python environments at '$HOME/pyenvs':"
+    ls $HOME/pyenvs
+}
+env_s () 
+{ 
+    local env_name="${1:-$(basename $(pwd))}"
+    echo "Activating python environment: '$env_name' "
+    source $HOME/pyenvs/$env_name/bin/activate
+}
+els () {
+    if [ $# -eq 1 ]; then
+        env_ls | grep $1
+    else
+        env_ls
+    fi
+}
+
+edcvb() {
+  # update python version of venv
+  # deletes the current python version venv
+  # installs requirements.txt to the new venv
+  if [ -n "$1" ]; then
+    current_version=$(pyenv version-name)
+
+    # Check if there is an active virtual environment
+    if [ -n "$VIRTUAL_ENV" ]; then
+      echo "Deactivating & deleting current virtual environment..."
+      se && ed
+    fi
+
+    if [[ ! "$current_version" =~ ^$1 ]]; then
+
+      echo "Switching to pyenv version: $1"
+      pyenv local "$1"
+      edcv
+      pir
+    else
+      echo "Already using pyenv version starting with: $current_version."
+      if [ -z "$VIRTUAL_ENV" ]; then
+        edcv
+      fi
+    fi
+  else
+    echo "Please provide a pyenv version as an argument."
+  fi
+  echo current version:
+  python --version
+}

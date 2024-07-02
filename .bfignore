@@ -1,0 +1,2 @@
+file_ignored_in_bfignore
+# all other files are sourced i.e. `source $each_file`

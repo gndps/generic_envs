@@ -1,0 +1,30 @@
+copy_ssh_keys() {
+    local ssh_host=$1
+
+    # TBD Find username from .ssh/config
+    local username=gundeepsingh
+
+    # Ensure both the private and public keys exist locally
+    local local_private_key="$HOME/.ssh/id_rsa"
+    local local_public_key="$HOME/.ssh/id_rsa.pub"
+
+    # Remote paths and destination
+    local remote_private_key=".ssh/id_rsa"
+    local remote_public_key=".ssh/id_rsa.pub"
+    local ssh_destination="${username}@${ssh_host}"
+
+    # Copy the private and public keys to the remote machine
+    scp $local_private_key $ssh_destination:$remote_private_key
+    scp $local_public_key $ssh_destination:$remote_public_key
+
+    Set permissions on the remote machine
+    ssh $ssh_destination << 'EOF'
+        chmod 600 ~/.ssh/id_rsa
+        chmod 644 ~/.ssh/id_rsa.pub
+EOF
+
+    echo "Keys copied and permissions set successfully on $ssh_host"
+}
+
+# Usage:
+# copy_ssh_keys hostname

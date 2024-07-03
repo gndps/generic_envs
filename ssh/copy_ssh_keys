@@ -1,11 +1,15 @@
 copy_ssh_keys() {
+    if [[ -z "$1" ]]; then
+        echo "Error: must provide ssh hostname as argument"
+        return 1
+    fi
     local ssh_host=$1
 
     # TBD Find username from .ssh/config
     local username=gundeepsingh
 
     # List of SSH key files
-    files=("id_rsa" "id_rsa.pub" "activessh" "archive" )
+    files=( "id_rsa" "id_rsa.pub" "activessh" "archive" )
 
     # Local and remote paths
     local_path="$HOME/.ssh/"
@@ -18,15 +22,16 @@ copy_ssh_keys() {
         local_file="$local_path$file"
         
         # Copy the file to the remote machine
-        scp "$local_file" "$ssh_destination:$remote_path$file"
+        echo "Copying $local_file to $ssh_destination:$remote_path$file..."
+        scp -r "$local_file" "$ssh_destination:$remote_path$file"
     done
 
-    Set permissions on the remote machine
-    ssh $ssh_destination << 'EOF'
-        chmod -R 700 ~/.ssh
-        chmod 600 ~/.ssh/authorized_keys
-        chmod 644 ~/.ssh/id_rsa.pub
-EOF
+    # Set permissions on the remote machine
+#     ssh $ssh_destination << 'EOF'
+#         chmod -R 700 ~/.ssh
+#         chmod 600 ~/.ssh/authorized_keys
+#         chmod 644 ~/.ssh/id_rsa.pub
+# EOF
 
     echo "Keys copied and permissions set successfully on $ssh_host"
 }

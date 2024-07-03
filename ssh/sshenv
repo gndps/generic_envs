@@ -5,13 +5,18 @@ ARCHIVE_DIR="$HOME/.ssh/archive"
 
 # Help function
 sshenv_help() {
+    echo "sshenv list"
+    echo "======================"
+    sshenv list
+    echo "======================"
+    echo
     echo "Usage: sshenv.sh [command] [arguments]"
     echo "Commands:"
-    echo "  init [profile_name]     Initialize a new SSH key-pair profile and activate it"
+    echo "  init [profile_name]     Initialize a new sshenv profile (using ~/.ssh/id_rsa, id_rsa.pub) and activate it"
     echo "  activate [profile_name] Activate SSH key-pair from the archive"
-    echo "  list                    List all archived SSH key-pairs"
-    echo "  delete                  Delete the current SSH key-pair"
-    echo "  switch                  Switch to the next SSH key-pair in the list"
+    echo "  list                    List all archived sshenv profiles"
+    echo "  delete                  Delete the current sshenv profile (it does not delete ~/.ssh/id_rsa, id_rsa.pub)"
+    echo "  switch                  Switch to the next sshenv profile"
 }
 
 # Function to initialize a new SSH key-pair profile and activate it

@@ -20,6 +20,10 @@ copy_ssh_keys() {
     for file in "${files[@]}"; do
         # Construct the full local path
         local_file="$local_path$file"
+        if [[ ! -f "$local_file" ]]; then
+            echo "Skipping $local_file as it does not exist"
+            continue
+        fi
         
         # Copy the file to the remote machine
         echo "Copying $local_file to $ssh_destination:$remote_path$file..."

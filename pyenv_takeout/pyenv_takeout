@@ -72,9 +72,9 @@ edcvb() {
 
     if [[ ! "$current_version" =~ ^$1 ]]; then
 
-      echo "Switching to pyenv version: $1"
-      pyenv local "$1"
-      edcv
+      echo "Switching to pyenv version: $1" && \
+      pyenv local "$1" && \
+      edcv && \
       pir
     else
       echo "Already using pyenv version starting with: $current_version."

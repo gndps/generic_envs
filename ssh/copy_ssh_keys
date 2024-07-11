@@ -20,7 +20,7 @@ copy_ssh_keys() {
     for file in "${files[@]}"; do
         # Construct the full local path
         local_file="$local_path$file"
-        if [[ ! -f "$local_file" ]]; then
+        if [[ ! -e "$local_file" ]]; then
             echo "Skipping $local_file as it does not exist"
             continue
         fi
@@ -30,15 +30,10 @@ copy_ssh_keys() {
         scp -r "$local_file" "$ssh_destination:$remote_path$file"
     done
 
-    # Set permissions on the remote machine
-#     ssh $ssh_destination << 'EOF'
-#         chmod -R 700 ~/.ssh
-#         chmod 600 ~/.ssh/authorized_keys
-#         chmod 644 ~/.ssh/id_rsa.pub
-# EOF
-
     echo "Keys copied and permissions set successfully on $ssh_host"
 }
+
+alias sshinit="sshenv activate gndps && copy_ssh_keys"
 
 # Usage:
 # copy_ssh_keys hostname

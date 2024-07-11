@@ -246,11 +246,19 @@ projenv() {
 }
 
 alias pa="projenv activate"
+# alias km="projenv activate" # keyboard walk with space
 alias pao="projenv activate && code ."
 alias pls="projenv list"
+alias ikm="projenv list" # vertical downwards keyboard walk
+alias pls="projenv list"
 alias pin="projenv init"
+alias ikmn="projenv init" # keyboard walk consistent with other projenv aliases
 alias prm="projenv remove"
 alias cp_="projenv cp"
 alias cpls="projenv list_files"
 alias pst="projenv paste"
 alias pst_all="projenv pasteall"
+
+function km() {
+    projenv activate $1 && code .
+}

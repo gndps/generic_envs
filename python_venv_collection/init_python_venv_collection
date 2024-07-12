@@ -1,5 +1,8 @@
 export PYTHON_VENV_COLLECTION=$BASH_FILES_DIR/repos/generic_envs/python_venv_collection
 
+# TLDR:
+# initialize venv from collection using alias `edcvf`
+
 # Define the edcvf function
 function edcvf() {
     if [ -z "$1" ]; then

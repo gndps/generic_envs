@@ -37,7 +37,7 @@ projenv_init() {
 
 # Function to list all managed projects
 projenv_list() {
-    if [[ -d "$PROJECT_STATES_DIR" ]]; then
+    if [[ -d "$PROJECT_STATES_DIR" && -n "$(ls -A "$PROJECT_STATES_DIR")" ]]; then
         local current_project=$(cat "$PROJECT_ENV_ROOT/active_project" 2>/dev/null)
         local current_pwd=$(pwd)
         local current_pwd_project=""

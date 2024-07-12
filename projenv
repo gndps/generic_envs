@@ -67,6 +67,8 @@ projenv_list() {
         done
     else
         echo "No managed projects found."
+        echo
+        projenv --help
     fi
 }
 

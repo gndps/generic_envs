@@ -257,9 +257,11 @@ alias pin="projenv init"
 alias ikmn="projenv init" # keyboard walk consistent with other projenv aliases
 alias prm="projenv remove"
 alias cp_="projenv cp"
+alias copy="projenv cp"
 alias cpls="projenv list_files"
 alias pst="projenv paste"
 alias pst_all="projenv pasteall"
+alias paste="projenv pasteall"
 
 function km() {
     projenv activate $1 && code .

@@ -17,6 +17,7 @@ sshenv_help() {
     echo "  list                    List all archived sshenv profiles"
     echo "  delete                  Delete the current sshenv profile (it does not delete ~/.ssh/id_rsa, id_rsa.pub)"
     echo "  switch                  Switch to the next sshenv profile"
+    echo "  new [-f]                Generate a new SSH key-pair (requires -f to overwrite existing keys if not saved)"
 }
 
 # Function to initialize a new SSH key-pair profile and activate it
@@ -77,8 +78,9 @@ sshenv_list() {
 
 # Function to delete the current SSH key-pair
 sshenv_delete() {
-    rm -f ~/.ssh/id_rsa ~/.ssh/id_rsa.pub ~/.ssh/activessh
-    echo "Current SSH key-pair and activessh have been deleted from ~/.ssh"
+    local profile_name=$(cat ~/.ssh/activessh 2>/dev/null)
+    rm -rf ~/.ssh/archive/"$profile_name"
+    echo "Folder ~/.ssh/archive/$profile_name has been deleted."
 }
 
 # Function to switch to the next SSH key-pair in the list
@@ -113,6 +115,41 @@ sshenv_switch() {
     fi
 }
 
+# Function to create a new SSH key-pair
+sshenv_new() {
+    local force_flag=$1
+
+    # Check if the current id_rsa and id_rsa.pub are already archived
+    local is_archived=false
+    for dir in "$ARCHIVE_DIR"/*/; do
+        if [[ -f "$dir/id_rsa" && -f "$dir/id_rsa.pub" ]]; then
+            if cmp -s "$HOME/.ssh/id_rsa" "$dir/id_rsa" && cmp -s "$HOME/.ssh/id_rsa.pub" "$dir/id_rsa.pub"; then
+                is_archived=true
+                break
+            fi
+        fi
+    done
+
+    # If the keys are not archived, require the -f flag to overwrite
+    if [[ "$is_archived" == false && "$force_flag" != "-f" ]]; then
+        echo "Error: Current SSH keys are not archived. Use 'sshenv new -f' to force overwrite."
+        return 1
+    fi
+
+    # Generate a new SSH key-pair
+    ssh-keygen -t rsa -b 4096 -f "$HOME/.ssh/id_rsa" -P ""
+    echo "<unknown profile>" > ~/.ssh/activessh
+    echo "New SSH key-pair generated."
+    if command -v pbcopy &> /dev/null; then
+        cat $HOME/.ssh/id_rsa.pub | pbcopy
+        echo "Public key copied to clipboard."
+    else
+        echo "Public key:"
+        echo
+        cat $HOME/.ssh/id_rsa.pub
+    fi
+}
+
 sshenv() {
     # Main script logic
     case "$1" in
@@ -128,7 +165,6 @@ sshenv() {
             if [[ -n "$2" ]]; then
                 sshenv_activate "$2"
             else
-                echo "Error: Profile name is required."
                 sshenv_help
             fi
             ;;
@@ -141,10 +177,14 @@ sshenv() {
         switch)
             sshenv_switch
             ;;
+        new)
+            sshenv_new "$2"
+            ;;
         *)
             sshenv_help
             ;;
     esac
 }
 
-alias sss="sshenv switch"
+alias sdfv="sshenv switch"
+alias sdf="sshenv activate"

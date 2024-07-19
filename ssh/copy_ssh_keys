@@ -20,19 +20,24 @@ copy_ssh_keys() {
     copy_file() {
         local file=$1
         local local_file="$local_path$file"
-        if [[ ! -e "$local_file" ]]; then
-            echo "Skipping $local_file as it does not exist"
-            return
-        fi
-        
-        # Copy the file to the remote machine using rsync
         echo "Copying $local_file to $ssh_destination:$remote_path$file..."
         rsync -az "$local_file" "$ssh_destination:$remote_path$file"
     }
 
+    copy_directory() {
+        local dir=$1
+        local local_dir="$local_path$dir"
+        echo "Copying directory $local_dir to $ssh_destination:$remote_path$dir..."
+        rsync -az "$local_dir/" "$ssh_destination:$remote_path$dir/"
+    }
+
     # Loop through each file and copy it to the remote machine in background
     for file in "${files[@]}"; do
-        copy_file "$file" &
+        if [[ -f "$local_path$file" ]]; then
+            copy_file "$file" &
+        elif [[ -d "$local_path$file" ]]; then
+            copy_directory "$file" &
+        fi
     done
 
     # Wait for all background jobs to complete

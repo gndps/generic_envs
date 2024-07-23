@@ -30,6 +30,9 @@ sshenv_init() {
 
     # Copy the current SSH key-pair to the archive
     cp ~/.ssh/id_rsa ~/.ssh/id_rsa.pub "$target_dir"
+    # make immutable
+    chmod a-w "$target_dir"
+    chattr +i "$target_dir"
 
     # Create the activessh file in the archive
     echo "$profile_name" > "$target_dir/activessh"
@@ -79,7 +82,10 @@ sshenv_list() {
 # Function to delete the current SSH key-pair
 sshenv_delete() {
     local profile_name=$(cat ~/.ssh/activessh 2>/dev/null)
-    rm -rf ~/.ssh/archive/"$profile_name"
+    dir_path=~/.ssh/archive/"$profile_name"
+    chmod u+w "$dir_path"
+    chattr -i "$dir_path"
+    rm -rf "$dir_path"
     echo "Folder ~/.ssh/archive/$profile_name has been deleted."
 }
 

@@ -250,7 +250,7 @@ projenv() {
 alias pa="projenv activate"
 # alias km="projenv activate" # keyboard walk with space
 function pao {
-    "projenv activate $@ && code ."
+    projenv activate $@ && code .
 }
 alias pls="projenv list"
 alias ikm="projenv list" # vertical downwards keyboard walk

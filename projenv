@@ -250,7 +250,18 @@ projenv() {
 alias pa="projenv activate"
 # alias km="projenv activate" # keyboard walk with space
 function pao {
+    if [[ -z "$1" ]]; then
+        echo "Please pass project"
+        return
+    fi
     projenv activate $@ && code .
+}
+function px {
+    if [[ -z "$1" ]]; then
+        echo "Please pass project"
+        return
+    fi
+    projenv activate $@ && code -r .
 }
 alias pls="projenv list"
 alias ikm="projenv list" # vertical downwards keyboard walk

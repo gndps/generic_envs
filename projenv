@@ -15,7 +15,7 @@ projenv_help() {
     echo "Commands:"
     echo "  init project_alias           Initialize projenv with the current directory"
     echo "  list|ls                      List all managed projects"
-    echo "  activate project_alias|index Activate a project by alias or index"
+    echo "  activate project_alias|index Activate a project by alias or index, or 'git' to cd into the current Git root"
     echo "  remove project_alias|index   Remove a project by alias or index"
     echo "  cp file_path                 Add a file to the copy buffer"
     echo "  paste                        Copy the file from the buffer to the current directory"
@@ -77,6 +77,19 @@ projenv_activate() {
     local identifier=$1
     local target_file=""
     
+    # Special case: 'git' project to navigate to the root of the current Git repo
+    if [[ "$identifier" == "git" ]]; then
+        local git_root
+        git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Not inside a Git repository."
+            return 1
+        fi
+        cd "$git_root" || { echo "Failed to change directory to Git root"; return 1; }
+        echo "Activated Git project at $git_root"
+        return
+    fi
+    
     if [[ "$identifier" =~ ^[0-9]+$ ]]; then
         target_file=$(ls "$PROJECT_STATES_DIR" | grep "^${identifier}_" | head -n 1)
     else
@@ -128,6 +141,12 @@ projenv_copy_file() {
 
     echo "$absolute_path" > "$new_file"
     echo "File $file_path added to the buffer"
+}
+
+projenv_clear_buffer() {
+    while [[ $(ls -A "$FILE_STATES_DIR") ]]; do
+        rm -f "$FILE_STATES_DIR"/*
+    done
 }
 
 # Function to paste the latest file from the buffer
@@ -224,7 +243,7 @@ projenv() {
                 projenv_help
             fi
             ;;
-        cp)
+        cp|copy)
             if [[ -n "$2" ]]; then
                 projenv_copy_file "$2"
             else
@@ -249,7 +268,7 @@ projenv() {
 
 alias pa="projenv activate"
 # alias km="projenv activate" # keyboard walk with space
-function pao {
+function po {
     if [[ -z "$1" ]]; then
         echo "Please pass project"
         return

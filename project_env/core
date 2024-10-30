@@ -1,0 +1,143 @@
+# Function to initialize projenv
+projenv_init() {
+    local project_alias=$1
+    local project_path=$(pwd)
+    local home_dir=~/
+
+    # Replace home directory with $HOME
+    if [[ "$project_path" == "$home_dir"* ]]; then
+        project_path="\$HOME/${project_path#$home_dir}"
+    fi
+
+    local num_files=$(ls "$PROJECT_STATES_DIR" | wc -l)
+    local new_index=$((num_files + 1))
+    local new_file="$PROJECT_STATES_DIR/${new_index}_$project_alias"
+
+    echo "$project_path" > "$new_file"
+    echo "Project $project_alias initialized at $project_path"
+}
+
+# Function to list all managed projects
+projenv_list() {
+    if [[ -d "$PROJECT_STATES_DIR" && -n "$(ls -A "$PROJECT_STATES_DIR")" ]]; then
+        local current_project=$(cat "$PROJECT_ENV_ROOT/active_project" 2>/dev/null)
+        local current_pwd=$(pwd)
+        local current_pwd_project=""
+
+        # Check if current_pwd is a project directory
+        for file in "$PROJECT_STATES_DIR"/*; do
+            if [[ "$current_pwd" == "$(cat "$file")" ]]; then
+                current_pwd_project=$(basename "$file")
+                break
+            fi
+        done
+
+        declare -a projects
+
+        for file in "$PROJECT_STATES_DIR"/*; do
+            local filename=$(basename "$file")
+            local index="${filename%%_*}"
+            local alias="${filename#*_}"
+            local project_path=$(cat "$file")
+            local prefix=""
+
+            if [[ "$current_project" == "$filename" && "$current_pwd_project" == "$filename" ]]; then
+                prefix="* "
+            elif [[ "$current_pwd_project" == "$filename" ]]; then
+                prefix="** "
+            fi
+
+            projects+=("$index:$prefix$alias ($project_path)")
+        done
+
+        # Sort the projects array based on the index
+        IFS=$'\n'
+        projects=($(sort -n -t: -k1 <<<"${projects[*]}"))
+        unset IFS
+
+        for project in "${projects[@]}"; do
+            local index="${project%%:*}"
+            local rest="${project#*:}"
+            echo "$index: $rest"
+        done
+    else
+        echo "No managed projects found."
+        echo
+        projenv --help
+    fi
+}
+
+# Function to activate a project
+projenv_activate() {
+    local identifier=$1
+    local target_file=""
+    
+    # Special case: 'git' project to navigate to the root of the current Git repo
+    if [[ "$identifier" == "git" ]]; then
+        local git_root
+        git_root=$(git rev-parse --show-toplevel 2>/dev/null)
+        if [[ $? -ne 0 ]]; then
+            echo "Error: Not inside a Git repository."
+            return 1
+        fi
+        cd "$git_root" || { echo "Failed to change directory to Git root"; return 1; }
+        echo "Activated Git project at $git_root"
+        return
+    # Special case: 'poetry' project to navigate to the root of the current poetry project
+    elif [[ "$identifier" == "poetry" ]]; then
+        local current_dir="$PWD"
+        local poetry_root=""
+        
+        while [[ "$current_dir" != "/" ]]; do
+            if [[ -f "$current_dir/pyproject.toml" ]]; then
+                poetry_root="$current_dir"
+                break
+            fi
+            current_dir="$(dirname "$current_dir")"
+        done
+        
+        if [[ -z "$poetry_root" ]]; then
+            echo "Error: No pyproject.toml found in current directory or parent directories."
+            return 1
+        fi
+        
+        cd "$poetry_root" || { echo "Failed to change directory to Poetry project root"; return 1; }
+        echo "Activated Poetry project at $poetry_root"
+        return
+    fi
+    
+    if [[ "$identifier" =~ ^[0-9]+$ ]]; then
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "^${identifier}_" | head -n 1)
+    else
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "_${identifier}$" | head -n 1)
+    fi
+
+    if [[ -n "$target_file" ]]; then
+        local project_path=$(cat "$PROJECT_STATES_DIR/$target_file")
+        project_path=${project_path//\$HOME/$HOME}
+        echo "$target_file" > "$PROJECT_ENV_ROOT/active_project"
+        cd "$project_path" || { echo "Failed to change directory to $project_path"; return 1; }
+        echo "Activated project: $identifier ($project_path)"
+    else
+        echo "Error: Project $identifier does not exist."
+    fi
+}
+
+# Function to remove a project
+projenv_remove() {
+    local identifier=$1
+    local target_file=""
+
+    if [[ "$identifier" =~ ^[0-9]+$ ]]; then
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "^${identifier}_" | head -n 1)
+    else
+        target_file=$(ls "$PROJECT_STATES_DIR" | grep "_${identifier}$" | head -n 1)
+    fi
+
+    if [[ -n "$target_file" ]]; then
+        rm -f "$PROJECT_STATES_DIR/$target_file"
+        echo "Removed project: $identifier"
+    else
+        echo "Error: Project $identifier does not exist."
+    fi
+}

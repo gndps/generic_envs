@@ -1,0 +1,125 @@
+#!/bin/bash
+
+# Root directory for projenv
+PROJECT_ENV_ROOT="$HOME/.projenv"
+PROJECT_STATES_DIR="$PROJECT_ENV_ROOT/project_states"
+FILE_STATES_DIR="$PROJECT_ENV_ROOT/file_states"
+PARENT_DIR=$(dirname "${BASH_SOURCE[0]}")
+source $PARENT_DIR/fileops
+source $PARENT_DIR/core
+
+# Initialize the necessary directories if they don't exist
+mkdir -p "$PROJECT_STATES_DIR"
+mkdir -p "$FILE_STATES_DIR"
+
+# Help function
+projenv_help() {
+    echo "Usage: projenv.sh [command] [arguments]"
+    echo "Commands:"
+    echo "  ----- Project Ops -----"
+    echo "  * init project_alias           Initialize projenv with the current directory"
+    echo "  * list|ls                      List all managed projects"
+    echo "  * remove project_alias|index   Remove a project by alias or index"
+    echo "  * activate project_alias|index Activate a project by alias or index, or special keyword 'git, poetry' to cd on current project's respective root folder."
+
+    echo ""
+    echo "  ----- File Ops -----"
+    echo "  * cp file_path                 Add a file to the copy buffer"
+    echo "  * paste                        Copy the file from the buffer to the current directory"
+    echo "  * pasteall                     Paste all files from the buffer to the current directory"
+    echo "  * list_files                   List all files in the buffer"
+}
+
+# Autocompletion function for projenv activate
+_projenv_activate_autocomplete() {
+    local cur_word="${COMP_WORDS[COMP_CWORD]}"
+    local projects=$(ls "$PROJECT_STATES_DIR" | sed 's/^[0-9]*_//')
+
+    COMPREPLY=($(compgen -W "$projects" -- "$cur_word"))
+}
+
+# Register the autocompletion function for projenv activate
+complete -F _projenv_activate_autocomplete projenv
+complete -F _projenv_activate_autocomplete pa
+
+# Main script logic
+projenv() {
+    case "$1" in
+        init)
+            if [[ -n "$2" ]]; then
+                projenv_init "$2"
+            else
+                echo "Error: Project alias is required."
+                projenv_help
+            fi
+            ;;
+        list|ls)
+            projenv_list
+            ;;
+        activate)
+            if [[ -n "$2" ]]; then
+                projenv_activate "$2"
+            else
+                echo "Error: Project alias or index is required."
+                projenv_help
+            fi
+            ;;
+        remove)
+            if [[ -n "$2" ]]; then
+                projenv_remove "$2"
+            else
+                echo "Error: Project alias or index is required."
+                projenv_help
+            fi
+            ;;
+        cp|copy)
+            if [[ -n "$2" ]]; then
+                projenv_copy_file "$2"
+            else
+                echo "Error: File path is required."
+                projenv_help
+            fi
+            ;;
+        paste)
+            projenv_paste
+            ;;
+        pasteall)
+            projenv_pasteall
+            ;;
+        list_files)
+            projenv_list_files
+            ;;
+        *)
+            projenv_help
+            ;;
+    esac
+}
+
+alias pa="projenv activate"
+# alias km="projenv activate" # keyboard walk with space
+function po {
+    if [[ -z "$1" ]]; then
+        echo "Please pass project"
+        return
+    fi
+    projenv activate $@ && code .
+}
+function px {
+    if [[ -z "$1" ]]; then
+        echo "Please pass project"
+        return
+    fi
+    projenv activate $@ && code -r .
+}
+alias pls="projenv list"
+alias ikm="projenv list" # vertical downwards keyboard walk
+alias pls="projenv list"
+alias pin="projenv init"
+alias ikmn="projenv init" # keyboard walk consistent with other projenv aliases
+alias prm="projenv remove"
+alias cp_="projenv cp"
+alias copy="projenv cp"
+alias cpls="projenv list_files"
+alias pst="projenv paste"
+alias pst_all="projenv pasteall"
+alias paste="projenv pasteall"

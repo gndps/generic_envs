@@ -1,0 +1,75 @@
+# Function to add a file to the copy buffer
+projenv_copy_file() {
+    local file_path=$1
+
+    if [[ ! -e "$file_path" ]]; then
+        echo "Error: File $file_path does not exist."
+        return 1
+    fi
+
+    local absolute_path=$(realpath "$file_path")
+    local num_files=$(ls "$FILE_STATES_DIR" | wc -l)
+    local new_index=$((num_files + 1))
+    local new_file="$FILE_STATES_DIR/$new_index"
+
+    echo "$absolute_path" > "$new_file"
+    echo "File $file_path added to the buffer"
+}
+
+projenv_clear_buffer() {
+    while [[ $(ls -A "$FILE_STATES_DIR") ]]; do
+        rm -f "$FILE_STATES_DIR"/*
+    done
+}
+
+# Function to paste the latest file from the buffer
+projenv_paste() {
+    local latest_file=$(ls -v "$FILE_STATES_DIR" | tail -n 1)
+    if [[ -z "$latest_file" ]]; then
+        echo "No files in the buffer."
+        return 1
+    fi
+
+    local file_path=$(cat "$FILE_STATES_DIR/$latest_file")
+    if [[ -d "$file_path" ]]; then
+        if cp -r "$file_path" .; then
+            rm -f "$FILE_STATES_DIR/$latest_file"
+            echo "Pasted directory: $(basename "$file_path")"
+        else
+            echo "Error: Could not copy directory $file_path. Directory consumed anyways."
+            rm -f "$FILE_STATES_DIR/$latest_file"
+        fi
+    else
+        if cp "$file_path" .; then
+            rm -f "$FILE_STATES_DIR/$latest_file"
+            echo "Pasted file: $(basename "$file_path")"
+        else
+            echo "Error: Could not copy $file_path. File consumed anyways."
+            rm -f "$FILE_STATES_DIR/$latest_file"
+        fi
+    fi
+}
+
+
+# Function to paste all files from the buffer
+projenv_pasteall() {
+    while [[ $(ls -A "$FILE_STATES_DIR") ]]; do
+        projenv_paste
+    done
+}
+
+# Function to list all files in the buffer
+projenv_list_files() {
+    if [[ -d "$FILE_STATES_DIR" ]]; then
+        local latest_file=$(ls -v "$FILE_STATES_DIR" | tail -n 1)
+        for file in $(ls -v "$FILE_STATES_DIR"); do
+            if [[ "$file" == "$latest_file" ]]; then
+                echo "* $file: $(cat "$FILE_STATES_DIR/$file")"
+            else
+                echo "  $file: $(cat "$FILE_STATES_DIR/$file")"
+            fi
+        done
+    else
+        echo "No files in the buffer."
+    fi
+}

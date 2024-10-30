@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Directory for archiving SSH keys
-ARCHIVE_DIR="$HOME/.ssh/archive"
+SSHENV_ARCHIVE_DIR="$HOME/.ssh/archive"
 
 # Help function
 sshenv_help() {
@@ -18,24 +18,107 @@ sshenv_help() {
     echo "  delete                  Delete the current sshenv profile (it does not delete ~/.ssh/id_rsa, id_rsa.pub)"
     echo "  switch                  Switch to the next sshenv profile"
     echo "  new [-f]                Generate a new SSH key-pair (requires -f to overwrite existing keys if not saved)"
+    echo "  clear [-f]              Clear SSH keys from the default location (requires -f to overwrite existing keys if not saved)"
+    echo "  copy [profile_name]     Copy public key for profile or default key in ~/.ssh to clipboard"
+    echo "  locate                  Print the name of the default SSH key file in ~/.ssh directory"
+    echo "  inject                  Copy sshenv profiles to a remote machine"
+    echo "                              Usage: sshenv inject --host <host> --profiles <profile1> <profile2> ..."
+    echo "                              Special profile 'self' copies sshenv script to ~/.ssh/sshenv on remote"
 }
+
+sshenv_locate_default_key() {
+    # List of default key filenames in order of preference
+    local keys=(id_rsa id_ecdsa id_ecdsa_sk id_ed25519 id_ed25519_sk id_dsa)
+
+    # Loop through each key filename to find the first one that exists
+    for key in "${keys[@]}"; do
+        if [[ -f "$HOME/.ssh/$key" ]]; then
+            echo "$key"
+            return 0  # Exit with success if a key is found
+        fi
+    done
+
+    # If no keys are found, print an error message and exit with failure
+    echo "No default SSH key found in ~/.ssh directory."
+    return 1
+}
+
 
 # Function to initialize a new SSH key-pair profile and activate it
 sshenv_init() {
-    local profile_name=$1
-    local target_dir="$ARCHIVE_DIR/$profile_name"
+    local profile_name
+    local force=false
 
-    # Create the archive directory if it doesn't exist
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -f|--force)
+                force=true
+                shift
+                ;;
+            *)
+                if [[ -z $profile_name ]]; then
+                    profile_name=$1
+                    shift
+                else
+                    echo "Error: Unknown argument: $1"
+                    return 1
+                fi
+                ;;
+        esac
+    done
+
+    if [[ -z $profile_name ]]; then
+        echo "Error: Profile name is required"
+        return 1
+    fi
+
+    local target_dir="$SSHENV_ARCHIVE_DIR/$profile_name"
+
+    # Check if the directory exists and force flag is not set
+    if [[ -d $target_dir && $force == false ]]; then
+        echo "Error: Profile $profile_name already exists."
+        echo "Use -f for deletion and force initialization."
+        return 1
+    fi
+
+    # Get the default key name
+    key_name=$(sshenv_locate_default_key)
+
+    # Check if the default key exists both private and public
+    if [[ ! ( -f "$HOME/.ssh/$key_name" && -f "$HOME/.ssh/$key_name.pub" ) ]]; then
+        echo "Error: Private and public keys must both exist for $key_name"
+        return 1
+    fi
+
+    # Remove the directory if it exists and force flag is set
+    if [[ -d $target_dir && $force == true ]]; then
+        chmod -R a+w "$target_dir"
+        rm -rf "$target_dir"
+    fi
+
+    # Create the archive directory
     mkdir -p "$target_dir"
 
-    # Copy the current SSH key-pair to the archive
-    cp ~/.ssh/id_rsa ~/.ssh/id_rsa.pub "$target_dir"
-    # make immutable
-    chmod a-w "$target_dir"
-    chattr +i "$target_dir"
+    # Check if a key was found
+    if [[ -n "$key_name" ]]; then
+        # Make sure permissions are correct before and after copying
+        chmod 600 "$HOME/.ssh/$key_name"
+        chmod 600 "$HOME/.ssh/$key_name.pub"
 
+        # Copy the current SSH key-pair to the archive
+        cp -p "$HOME/.ssh/$key_name" "$HOME/.ssh/$key_name.pub" "$target_dir"
+    else
+        echo "No default SSH key found."
+        exit 1
+    fi
+    
     # Create the activessh file in the archive
     echo "$profile_name" > "$target_dir/activessh"
+
+    # make immutable
+    chmod -R a-w "$target_dir"
+    # chattr +i "$target_dir"
 
     # Automatically activate the just-initiated profile
     sshenv_activate "$profile_name"
@@ -44,11 +127,17 @@ sshenv_init() {
 # Function to activate an SSH key-pair from the archive
 sshenv_activate() {
     local profile_name=$1
-    local source_dir="$ARCHIVE_DIR/$profile_name"
+    local source_dir="$SSHENV_ARCHIVE_DIR/$profile_name"
+
+    if ! sshenv_clear; then
+        echo "Error occurred while clearing SSH keys."
+        sshenv_list
+        return 1
+    fi
 
     if [[ -d "$source_dir" ]]; then
         # Copy the SSH key-pair from the archive to the default location
-        cp "$source_dir/id_rsa" "$source_dir/id_rsa.pub" ~/.ssh
+        cp "$source_dir"/id_* ~/.ssh/
 
         # Update the activessh file in the home directory
         echo "$profile_name" > ~/.ssh/activessh
@@ -61,19 +150,27 @@ sshenv_activate() {
 
 # Function to list all archived SSH key-pairs
 sshenv_list() {
-    if [[ -d "$ARCHIVE_DIR" ]]; then
+    if [[ -d "$SSHENV_ARCHIVE_DIR" ]]; then
         local current_ssh=$(cat ~/.ssh/activessh 2>/dev/null)
-        for dir in "$ARCHIVE_DIR"/*/; do
+        local found_active_profile=false
+        for dir in "$SSHENV_ARCHIVE_DIR"/*/; do
             dir=${dir%*/}
             dir=${dir##*/}
-            if [[ -f "$ARCHIVE_DIR/$dir/activessh" ]]; then
+            if [[ -f "$SSHENV_ARCHIVE_DIR/$dir/activessh" ]]; then
                 if [[ "$dir" == "$current_ssh" ]]; then
                     echo "* $dir"
+                    found_active_profile=true
                 else
                     echo "  $dir"
                 fi
             fi
         done
+        if [[ "$found_active_profile" == false ]]; then
+            key_name=$(sshenv_locate_default_key)
+            if [[ ( -f "$HOME/.ssh/$key_name" && -f "$HOME/.ssh/$key_name.pub" ) ]]; then
+                echo "  * $key_name (unknown profile)"
+            fi
+        fi
     else
         echo "No archived SSH key-pairs found."
     fi
@@ -81,87 +178,301 @@ sshenv_list() {
 
 # Function to delete the current SSH key-pair
 sshenv_delete() {
-    local profile_name=$(cat ~/.ssh/activessh 2>/dev/null)
+    local profile_name="$1"
+    local force_flag="$2"
     dir_path=~/.ssh/archive/"$profile_name"
+
+    if [[ -z "$profile_name" ]]; then
+        echo "Error: Profile name is required."
+        return 1
+    fi
+
+    if [[ ! -d "$dir_path" ]]; then
+        echo "Error: Profile $profile_name does not exist in archive."
+        return 1
+    fi
+
+    if [[ "$force_flag" != "-f" ]]; then
+        echo "Error: Force flag is required to delete profile."
+        return 1
+    fi
+
     chmod u+w "$dir_path"
-    chattr -i "$dir_path"
+    # chattr -i "$dir_path"
     rm -rf "$dir_path"
     echo "Folder ~/.ssh/archive/$profile_name has been deleted."
 }
 
 # Function to switch to the next SSH key-pair in the list
 sshenv_switch() {
-    if [[ -d "$ARCHIVE_DIR" ]]; then
+    if [[ -d "$SSHENV_ARCHIVE_DIR" ]]; then
+        # echo "[INFO] Archive directory exists: $SSHENV_ARCHIVE_DIR"
         local current_ssh=$(cat ~/.ssh/activessh 2>/dev/null)
+        # echo "[DEBUG] Current active SSH profile: $current_ssh"
         local ssh_keys=()
-        for dir in "$ARCHIVE_DIR"/*/; do
+        
+        for dir in "$SSHENV_ARCHIVE_DIR"/*/; do
             dir=${dir%*/}
             dir=${dir##*/}
-            if [[ -f "$ARCHIVE_DIR/$dir/activessh" ]]; then
+            if [[ -f "$SSHENV_ARCHIVE_DIR/$dir/activessh" ]]; then
                 ssh_keys+=("$dir")
+                # echo "[INFO] Found archived SSH profile: $dir"
             fi
         done
+        
         if [[ ${#ssh_keys[@]} -eq 0 ]]; then
-            echo "No archived SSH key-pairs found."
+            echo "[WARN] No archived SSH key-pairs found."
             return
         fi
+
+        if ! sshenv_clear; then
+            echo "Error occurred while clearing SSH keys."
+            sshenv_list
+            return 1
+        fi
+
+        echo "Switching to next ssh profile..."
+        
         if [[ -z "$current_ssh" ]]; then
+            # echo "[INFO] No active SSH profile. Activating first profile: ${ssh_keys[0]}"
             sshenv_activate "${ssh_keys[0]}"
         else
             for i in "${!ssh_keys[@]}"; do
                 if [[ "${ssh_keys[$i]}" == "$current_ssh" ]]; then
                     next_index=$(( (i + 1) % ${#ssh_keys[@]} ))
+                    # echo "[INFO] Switching from $current_ssh to ${ssh_keys[$next_index]}"
                     sshenv_activate "${ssh_keys[$next_index]}"
                     return
                 fi
             done
         fi
     else
-        echo "No archived SSH key-pairs found."
+        echo "[ERROR] No archive directory found at $SSHENV_ARCHIVE_DIR."
+    fi
+}
+
+sshenv_check_if_keys_are_archived() {
+    local force_flag="$1"
+
+    # Get the list of files in ~/.ssh starting with id_
+    local ssh_files=("$HOME/.ssh"/id_*)
+
+    # Check if the glob matched any files (prevents error when no matches found)
+    if [ ! -e "${ssh_files[0]}" ]; then
+        return 0
+    fi
+    
+    # Check if the current SSH files are already archived
+    local all_files_archived=true
+    for file in "${ssh_files[@]}"; do
+        local filename="${file##*/}"
+        local archived=false
+        for dir in "$SSHENV_ARCHIVE_DIR"/*/; do
+            local archived_file="${dir%/}/$filename"
+            # echo "Comparing $file with $archived_file"
+            if [[ -f "$archived_file" ]] && cmp -s "$file" "$archived_file"; then
+                archived=true
+                # echo "Archive path: $archived_file"
+                break
+            fi
+        done
+        if [ "$archived" = false ]; then
+            all_files_archived=false
+            break
+        fi
+    done
+
+    # If the keys are not archived, require the -f flag to overwrite
+    if [[ "$all_files_archived" = false && "$force_flag" != "-f" ]]; then
+        echo "Error: Current SSH keys are not archived."
+        echo "    Use 'sshenv init <profile_name>' to initialize profile"
+        echo "    Or  'sshenv new -f' to force overwrite with new key"
+        echo "    Or  'sshenv clear -f' to force clear"
+        return 1
+    fi
+
+    return 0
+}
+
+sshenv_clear() {
+    local force_flag="$1"
+
+    if [[ "$force_flag" != "-f" && -n "$force_flag" ]]; then
+        echo "Error: The force flag must be -f."
+        return 1
+    fi
+
+    if ! sshenv_check_if_keys_are_archived "$force_flag"; then
+        return 1
+    fi
+
+    # Clear the content of ~/.ssh/activessh
+    : > ~/.ssh/activessh
+    # echo "Cleared the content of ~/.ssh/activessh"
+    
+    # Get the default key name
+    key_name=$(sshenv_locate_default_key)
+
+    # Check if the default key exists both private and public
+    if [[ ! ( -f "$HOME/.ssh/$key_name" || -f "$HOME/.ssh/$key_name.pub" ) ]]; then
+        # echo "No default key found in $HOME/.ssh"
+        return 0
+    fi
+
+    # Check if a key was found
+    if [[ -n "$key_name" ]]; then
+        # Delete the default key
+        if [[ -f "$HOME/.ssh/$key_name" ]]; then
+            rm -f "$HOME/.ssh/$key_name"
+            # echo "Deleted private SSH key at $HOME/.ssh/$key_name"
+        fi
+        if [[ -f "$HOME/.ssh/$key_name.pub" ]]; then
+            rm -f "$HOME/.ssh/$key_name.pub"
+            # echo "Deleted public SSH key at $HOME/.ssh/$key_name.pub"
+        fi
+    fi
+
+}
+
+sshenv_copy() {
+    if [[ -n "$1" ]]; then
+        # first file in the passed profile with extension .pub
+        key_path=$(find "$SSHENV_ARCHIVE_DIR/$1" -type f -name "*.pub" -print -quit)
+    else
+        key_name=$(sshenv_locate_default_key)
+        key_path="$HOME/.ssh/$key_name.pub"
+    fi
+
+    # Check if the default key exists both private and public
+    if [[ ! ( -f "$key_path" ) ]]; then
+        echo "Error: Key not found - $key_name"
+        return 1
+    fi
+
+    if command -v pbcopy &> /dev/null; then
+        cat $key_path | pbcopy
+        echo "Public key copied to clipboard."
+    else
+        echo "Public key:"
+        echo
+        cat $key_path
     fi
 }
 
 # Function to create a new SSH key-pair
 sshenv_new() {
-    local force_flag=$1
+    local force_flag="$1"
 
-    # Check if the current id_rsa and id_rsa.pub are already archived
-    local is_archived=false
-    for dir in "$ARCHIVE_DIR"/*/; do
-        if [[ -f "$dir/id_rsa" && -f "$dir/id_rsa.pub" ]]; then
-            if cmp -s "$HOME/.ssh/id_rsa" "$dir/id_rsa" && cmp -s "$HOME/.ssh/id_rsa.pub" "$dir/id_rsa.pub"; then
-                is_archived=true
-                break
-            fi
-        fi
-    done
-
-    # If the keys are not archived, require the -f flag to overwrite
-    if [[ "$is_archived" == false && "$force_flag" != "-f" ]]; then
-        echo "Error: Current SSH keys are not archived. Use 'sshenv new -f' to force overwrite."
+    if [[ "$force_flag" != "-f" && -n "$force_flag" ]]; then
+        echo "Error: The force flag must be -f."
         return 1
     fi
 
+    if ! sshenv_clear $force_flag; then
+        echo "Error occurred while clearing SSH keys."
+        sshenv_list
+        return 1
+    fi
+
+    # Ask for the protocol interactively
+    echo "Select the protocol for the new SSH key-pair:"
+    echo "1. RSA"
+    echo "2. DSA (unsupported)"
+    echo "3. ECDSA (unsupported)"
+    echo "4. Ed25519"
+    read -p "Enter the number of your chosen protocol: " protocol_choice
+
+    case $protocol_choice in
+        1)
+            protocol="rsa"
+            ;;
+        2)
+            protocol="dsa"
+            ;;
+        3)
+            protocol="ecdsa"
+            ;;
+        4)
+            protocol="ed25519"
+            ;;
+        *)
+            echo "Error: Invalid protocol choice. Exiting."
+            return 1
+            ;;
+    esac
+
     # Generate a new SSH key-pair
-    ssh-keygen -t rsa -b 4096 -f "$HOME/.ssh/id_rsa" -P ""
+    ssh-keygen -t $protocol -b 4096 -f "$HOME/.ssh/id_$protocol" -P ""
     echo "<unknown profile>" > ~/.ssh/activessh
     echo "New SSH key-pair generated."
-    if command -v pbcopy &> /dev/null; then
-        cat $HOME/.ssh/id_rsa.pub | pbcopy
-        echo "Public key copied to clipboard."
-    else
-        echo "Public key:"
-        echo
-        cat $HOME/.ssh/id_rsa.pub
-    fi
+    echo "Command to initialize profile:"
+    echo "sshenv init <profile_name>"
+    sshenv_copy
 }
+
+sshenv_inject() {
+    local host=""
+    local profiles=()
+
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --host)
+                host="$2"
+                shift 2
+                ;;
+            --profile)
+                profiles+=("$2")
+                shift 2
+                ;;
+            --profiles)
+                shift
+                profiles+=($@)
+                break
+                ;;
+            *)
+                echo "Unknown option: $1"
+                return 1
+                ;;
+        esac
+    done
+
+    if [ -z "$host" ] || [ ${#profiles[@]} -eq 0 ]; then
+        echo "Both --host and --profile or --profiles options are required"
+        return 1
+    fi
+
+    for profile in "${profiles[@]}"; do
+        if [ "$profile" = "self" ]; then
+            local script_path="${BASH_SOURCE[0]}"
+            if rsync -az "$script_path" "$host:~/.ssh/sshenv"; then
+                echo "$(date) - Successfully copied sshenv script to $host"
+            else
+                echo "$(date) - Failed to copy sshenv script to $host"
+            fi
+        else
+            local local_profile_dir="$HOME/.ssh/archive/$profile"
+            if [ ! -d "$local_profile_dir" ]; then
+                echo "Profile directory not found: $local_profile_dir"
+                continue
+            fi
+
+            local remote_profile_dir="~/.ssh/archive/$profile"
+            if rsync -az --rsync-path="mkdir -p ~/.ssh/archive && rsync" "$local_profile_dir/" "$host:$remote_profile_dir/"; then
+                echo "$(date) - Successfully copied profile $profile to $host"
+            else
+                echo "$(date) - Failed to copy profile $profile to $host"
+            fi
+        fi
+    done
+}
+
 
 sshenv() {
     # Main script logic
     case "$1" in
         init)
             if [[ -n "$2" ]]; then
-                sshenv_init "$2"
+                sshenv_init "${@:2}"
             else
                 echo "Error: Profile name is required."
                 sshenv_help
@@ -178,13 +489,25 @@ sshenv() {
             sshenv_list
             ;;
         delete)
-            sshenv_delete
+            sshenv_delete "${@:2}"
             ;;
         switch)
             sshenv_switch
             ;;
         new)
             sshenv_new "$2"
+            ;;
+        clear)
+            sshenv_clear "${@:2}"
+            ;;
+        locate)
+            sshenv_locate_default_key
+            ;;
+        inject)
+            sshenv_inject "${@:2}"
+            ;;
+        copy)
+            sshenv_copy "${@:2}"
             ;;
         *)
             sshenv_help
@@ -193,4 +516,4 @@ sshenv() {
 }
 
 alias sdfv="sshenv switch"
-alias sdf="sshenv activate"
+alias sdf="sshenv"

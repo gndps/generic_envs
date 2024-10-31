@@ -120,22 +120,62 @@ sshenv_init() {
     chmod -R a-w "$target_dir"
     # chattr +i "$target_dir"
 
+    echo "Profile initialized: $profile_name"
+
     # Automatically activate the just-initiated profile
+    echo "Activating profile: $profile_name"
     sshenv_activate "$profile_name"
 }
+
+sshenv_remove_from_agent() {
+    ssh-add -d $HOME/.ssh/$key_name 2>/dev/null || true
+}
+
+sshenv_add_to_agent() {
+    if ! command -v ssh-add &> /dev/null; then
+        return 0
+    fi
+
+    local KEY_PATH="$HOME/.ssh/$(sshenv locate)"
+    # echo "Using key path: $KEY_PATH"
+
+    # Get the fingerprint of the key
+    local FINGERPRINT=$(ssh-keygen -lf "$KEY_PATH" | awk '{print $2}')
+    if [ $? -ne 0 ]; then
+        echo "Failed to generate fingerprint for the key."
+        return 1
+    fi
+
+    # Check if the key is already in the agent
+    if ! ssh-add -l | grep -q "$FINGERPRINT"; then
+        echo "Adding key to agent..."
+        ssh-add 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo "Successfully added key to the agent."
+            # ssh-add -l
+        else
+            echo "Failed to add key to the agent."
+            return 1
+        fi
+    fi
+}
+
 
 # Function to activate an SSH key-pair from the archive
 sshenv_activate() {
     local profile_name=$1
     local source_dir="$SSHENV_ARCHIVE_DIR/$profile_name"
 
-    if ! sshenv_clear; then
+    if ! sshenv_clear --skip-agent ; then
         echo "Error occurred while clearing SSH keys."
         sshenv_list
         return 1
     fi
 
     if [[ -d "$source_dir" ]]; then
+        # add to ssh agent
+
+        echo "Activating $profile_name.."
         # Copy the SSH key-pair from the archive to the default location
         cp "$source_dir"/id_* ~/.ssh/
 
@@ -143,8 +183,9 @@ sshenv_activate() {
         echo "$profile_name" > ~/.ssh/activessh
         # Display the list of profiles after activation
         
-        ssh-add 2>/dev/null || true
         sshenv_list
+        sshenv_add_to_agent
+
     else
         echo "Error: Archive $profile_name does not exist."
     fi
@@ -199,7 +240,6 @@ sshenv_delete() {
         return 1
     fi
 
-    ssh-add -d ~/.ssh/archive/$profile_name 2>/dev/null || true
     chmod u+w "$dir_path"
     # chattr -i "$dir_path"
     rm -rf "$dir_path"
@@ -228,11 +268,11 @@ sshenv_switch() {
             return
         fi
 
-        if ! sshenv_clear; then
-            echo "Error occurred while clearing SSH keys."
-            sshenv_list
-            return 1
-        fi
+        # if ! sshenv_clear --skip-agent; then
+        #     echo "Error occurred while clearing SSH keys."
+        #     sshenv_list
+        #     return 1
+        # fi
 
         echo "Switching to next ssh profile..."
         
@@ -297,44 +337,60 @@ sshenv_check_if_keys_are_archived() {
     return 0
 }
 
+
 sshenv_clear() {
-    local force_flag="$1"
+    local force=false
+    local skip_agent=false
 
-    if [[ "$force_flag" != "-f" && -n "$force_flag" ]]; then
-        echo "Error: The force flag must be -f."
-        return 1
-    fi
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f|--force)
+                force=true
+                ;;
+            --skip-agent)
+                skip_agent=true
+                ;;
+            *)
+                echo "Error: Unknown option $1"
+                return 1
+                ;;
+        esac
+        shift
+    done
 
-    if ! sshenv_check_if_keys_are_archived "$force_flag"; then
-        return 1
+    if ! sshenv_check_if_keys_are_archived; then
+        if ! $force; then
+            return 1
+        fi
     fi
 
     # Clear the content of ~/.ssh/activessh
     : > ~/.ssh/activessh
-    # echo "Cleared the content of ~/.ssh/activessh"
     
     # Get the default key name
     key_name=$(sshenv_locate_default_key)
 
     # Check if the default key exists both private and public
     if [[ ! ( -f "$HOME/.ssh/$key_name" || -f "$HOME/.ssh/$key_name.pub" ) ]]; then
-        # echo "No default key found in $HOME/.ssh"
         return 0
     fi
 
     # Check if a key was found
     if [[ -n "$key_name" ]]; then
+        # Remove the key from the agent unless --skip-agent is specified
+        if ! $skip_agent; then
+            sshenv_remove_from_agent
+        fi
+
         # Delete the default key
         if [[ -f "$HOME/.ssh/$key_name" ]]; then
             rm -f "$HOME/.ssh/$key_name"
-            # echo "Deleted private SSH key at $HOME/.ssh/$key_name"
         fi
         if [[ -f "$HOME/.ssh/$key_name.pub" ]]; then
             rm -f "$HOME/.ssh/$key_name.pub"
-            # echo "Deleted public SSH key at $HOME/.ssh/$key_name.pub"
         fi
-    fi
 
+    fi
 }
 
 sshenv_copy() {
@@ -405,7 +461,7 @@ sshenv_new() {
     esac
 
     # Generate a new SSH key-pair
-    ssh-keygen -t $protocol -b 4096 -f "$HOME/.ssh/id_$protocol" -P ""
+    ssh-keygen -t $protocol -b 4096 -f "$HOME/.ssh/id_$protocol"
     echo "<unknown profile>" > ~/.ssh/activessh
     echo "New SSH key-pair generated."
     echo "Command to initialize profile:"

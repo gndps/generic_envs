@@ -143,7 +143,7 @@ sshenv_activate() {
         echo "$profile_name" > ~/.ssh/activessh
         # Display the list of profiles after activation
         
-        ssh-add
+        ssh-add 2>/dev/null || true
         sshenv_list
     else
         echo "Error: Archive $profile_name does not exist."
@@ -199,9 +199,7 @@ sshenv_delete() {
         return 1
     fi
 
-    if ssh-add -d ~/.ssh/archive/$profile_name 2>/dev/null; then
-        echo "Key from profile $profile_name deleted from the agent."
-    fi
+    ssh-add -d ~/.ssh/archive/$profile_name 2>/dev/null || true
     chmod u+w "$dir_path"
     # chattr -i "$dir_path"
     rm -rf "$dir_path"

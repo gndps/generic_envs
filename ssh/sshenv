@@ -508,6 +508,22 @@ sshenv_inject() {
             else
                 echo "$(date) - Failed to copy sshenv script to $host"
             fi
+        elif [ "$profile" = "active" ]; then
+            local script_path="${BASH_SOURCE[0]}"
+            for file in "$HOME/.ssh/id_"*; do
+                if rsync -az "$file" "$host:~/.ssh/"; then
+                    echo "$(date) - Successfully copied $file to $host"
+                else
+                    echo "$(date) - Failed to copy $file to $host"
+                fi
+            done
+            if [[ -f "$HOME/.ssh/activessh" ]]; then
+                if rsync -az "$HOME/.ssh/activessh" "$host:~/.ssh/"; then
+                    echo "$(date) - Successfully copied $HOME/.ssh/activessh to $host"
+                else
+                    echo "$(date) - Failed to copy $HOME/.ssh/activessh to $host"
+                fi
+            fi
         else
             local local_profile_dir="$HOME/.ssh/archive/$profile"
             if [ ! -d "$local_profile_dir" ]; then

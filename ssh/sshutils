@@ -13,5 +13,6 @@ function list_ssh_hosts() {
 
 alias sshcp="cat ~/.ssh/id_rsa.pub | pbcopy"
 alias sshedit="code ~/.ssh"
+alias sshe="code ~/.ssh"
 alias sshls="list_ssh_hosts"
 

@@ -4,13 +4,16 @@
 PROJECT_ENV_ROOT="$HOME/.projenv"
 PROJECT_STATES_DIR="$PROJECT_ENV_ROOT/project_states"
 FILE_STATES_DIR="$PROJECT_ENV_ROOT/file_states"
+PROFILES_DIR="$PROJECT_ENV_ROOT/profiles"
 PARENT_DIR=$(dirname "${BASH_SOURCE[0]}")
 source $PARENT_DIR/fileops
 source $PARENT_DIR/core
+source $PARENT_DIR/profiles
 
 # Initialize the necessary directories if they don't exist
 mkdir -p "$PROJECT_STATES_DIR"
 mkdir -p "$FILE_STATES_DIR"
+mkdir -p "$PROFILES_DIR"
 
 # Help function
 projenv_help() {
@@ -28,7 +31,14 @@ projenv_help() {
     echo "  * paste                        Copy the file from the buffer to the current directory"
     echo "  * pasteall                     Paste all files from the buffer to the current directory"
     echo "  * list_files                   List all files in the buffer"
+
+    echo ""
+    echo "  ----- Profile Ops -----"
+    echo "  * load profile_name            Load a profile"
+    echo "  * save profile_name            Save the current state to a profile"
+    echo "  * update profile_name          Update an existing profile (overwrites existing profile)"
 }
+
 
 # Autocompletion function for projenv activate
 _projenv_activate_autocomplete() {
@@ -88,6 +98,30 @@ projenv() {
             ;;
         list_files)
             projenv_list_files
+            ;;
+        load)
+            if [[ -n "$2" ]]; then
+                projenv_load "$2"
+            else
+                echo "Error: Profile name is required."
+                projenv_help
+            fi
+            ;;
+        save)
+            if [[ -n "$2" ]]; then
+                projenv_save "$2"
+            else
+                echo "Error: Profile name is required."
+                projenv_help
+            fi
+            ;;
+        update)
+            if [[ -n "$2" ]]; then
+                projenv_save "$2" "-f"
+            else
+                echo "Error: Profile name is required."
+                projenv_help
+            fi
             ;;
         *)
             projenv_help

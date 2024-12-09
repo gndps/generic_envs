@@ -55,6 +55,7 @@ projenv_list() {
         projects=($(sort -n -t: -k1 <<<"${projects[*]}"))
         unset IFS
 
+        echo "Projects in the default/active profile:"
         for project in "${projects[@]}"; do
             local index="${project%%:*}"
             local rest="${project#*:}"
@@ -65,7 +66,18 @@ projenv_list() {
         echo
         projenv --help
     fi
+    if [[ -d "$PROFILES_DIR" && -n "$(ls -A "$PROFILES_DIR")" ]]; then
+        echo ""
+        echo "Available project env profiles:"
+        for profile in "$PROFILES_DIR"/*; do
+            echo "$(basename "$profile")"
+        done
+    else
+        echo ""
+        echo "No project env profiles found."
+    fi
 }
+
 
 # Function to activate a project
 projenv_activate() {

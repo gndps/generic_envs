@@ -5,7 +5,9 @@ Manage multiple ssh environments, switch between them, create new envs, inject e
 # Installation
 
 ```bash
-curl -sSf https://raw.githubusercontent.com/gndps/generic_envs/refs/heads/main/ssh/install_sshenv.sh | bash
+bash <(curl -sSf https://raw.githubusercontent.com/gndps/generic_envs/refs/heads/main/ssh/install_sshenv.sh)
+[ -f ~/.bashrc ] && source ~/.bashrc
+[ -f ~/.bash_profile ] && source ~/.bash_profile
 ```
 
 # Usage

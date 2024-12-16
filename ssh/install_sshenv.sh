@@ -5,6 +5,7 @@ SCRIPT_URL="https://raw.githubusercontent.com/gndps/generic_envs/refs/heads/main
 
 # Destination path for the script
 DEST_PATH="$HOME/.ssh/sshenv"
+mkdir -p $HOME/.ssh
 
 # Download the script
 echo "Downloading script from $SCRIPT_URL to $DEST_PATH..."

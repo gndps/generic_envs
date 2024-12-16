@@ -2,6 +2,9 @@
 
 Manage multiple ssh environments, switch between them, create new envs, inject envs to ssh machines.
 
+## How it works 
+Sshenv manages environments using profiles. Each ssh keypair needs to be initialized into a profile for it to be managed by sshenv. Each profile is a folder inside `~/.ssh/archive` and it contains multiple folders, one for each profile. Each profile folder contains the keypair which was present in `~/.ssh` during profile initialization (`sshenv init <profile_name>`).
+
 # Installation
 
 ```bash
@@ -11,8 +14,6 @@ bash <(curl -sSf https://raw.githubusercontent.com/gndps/generic_envs/refs/heads
 ```
 
 # Usage
-## Profile 
-Sshenv manages environments using profiles. Each ssh keypair needs to be initialized into a profile for it to be managed by sshenv.
 
 ## Initialize profile
 An existing ssh key pair (id_rsa public/private or any other encryption) can be initialized as a profile using:

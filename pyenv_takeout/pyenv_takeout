@@ -1,90 +1,183 @@
+# Define base path for all environments
+export PYENV_TAKEOUT_PATH="$HOME/pyenvs"
+
+# Helper to get hashed env name from full path
+get_env_name_from_path() {
+  local full_path="$(pwd)"
+  local base_name="$(basename "$full_path")"
+  local hash_suffix=$(echo -n "$full_path" | sha1sum | cut -c1-8)
+  echo "${base_name}-${hash_suffix}"
+}
+
 alias se='[[ -n "$VIRTUAL_ENV" ]] && deactivate'
 alias ed='env_d'
 alias edc='env_c'
 alias edcv='env_'
 alias es='env_s'
-# alias pir='uv pip install -r requirements.txt' # pre requisite: pipx install uv or brew install uv
+# alias pir='uv pip install -r requirements.txt' # pre-requisite: pipx install uv or brew install uv
 
-env_ () 
-{ 
-    # create and source
-    local env_name="${1:-$(basename $(pwd))}"
-    env_c $env_name && env_s $env_name
-}
-env_c () 
-{ 
-    # create environment if it doens't exist
-    se # exist current environment if any
-    local env_name="${1:-$(basename $(pwd))}"
-    mkdir -p $HOME/pyenvs
-    env_path=$HOME/pyenvs/$env_name
+env_ () {
+    # Create and source (only if not already created)
+    local env_name="${1:-$(get_env_name_from_path)}"
+    local env_path="$PYENV_TAKEOUT_PATH/$env_name"
+
     if [ -d "$env_path" ]; then
-        echo "python environment '$env_name' already exist"
+        echo "Environment '$env_name' already exists. Skipping creation and requirements install."
+        env_s "$env_name"
     else
-        echo "Creating python environment using uv: '$env_name' "
-        python3 -m venv $env_path
-        # uv venv $env_path
+        env_c "$env_name"
+        env_s "$env_name"
+        # Only install requirements.txt if env is newly created
+        if [ -f "requirements.txt" ]; then
+            echo "Installing requirements for environment '$env_name'..."
+            uv pip install -r requirements.txt || pip install -r requirements.txt
+        fi
     fi
 }
-env_d () 
-{ 
-    local env_name="${1:-$(basename $(pwd))}"
 
+env_c () {
+    # Create environment if it doesn't exist
+    se # Exit current environment if any
+    local env_name="${1:-$(get_env_name_from_path)}"
+    mkdir -p "$PYENV_TAKEOUT_PATH"
+    local env_path="$PYENV_TAKEOUT_PATH/$env_name"
+
+    if [ -d "$env_path" ]; then
+        echo "Python environment '$env_name' already exists."
+    else
+        echo "Creating Python environment using venv: '$env_name'"
+        uv venv "$env_path" || python3 -m venv "$env_path"
+    fi
+}
+
+env_d () {
+    local env_name="${1:-$(get_env_name_from_path)}"
     if [[ "$VIRTUAL_ENV" == *"/$env_name" ]]; then
-        echo "Deactivating python environment: '$env_name'"
+        echo "Deactivating Python environment: '$env_name'"
         deactivate
     fi
+    echo "Deleting Python environment: '$env_name'"
+    rm -rf "$PYENV_TAKEOUT_PATH/$env_name"
+}
 
-    echo "Deleting python environment: '$env_name' "
-    rm -r $HOME/pyenvs/$env_name
+env_ls () {
+    echo "Listing Python environments at '$PYENV_TAKEOUT_PATH':"
+    ls "$PYENV_TAKEOUT_PATH"
 }
-env_ls () 
-{ 
-    echo "Listing python environments at '$HOME/pyenvs':"
-    ls $HOME/pyenvs
+
+env_s () {
+    local env_name="${1:-$(get_env_name_from_path)}"
+    echo "Activating Python environment: '$env_name'"
+    echo "Full path: '$PYENV_TAKEOUT_PATH/$env_name'"
+    source "$PYENV_TAKEOUT_PATH/$env_name/bin/activate"
 }
-env_s () 
-{ 
-    local env_name="${1:-$(basename $(pwd))}"
-    echo "Activating python environment: '$env_name' "
-    source $HOME/pyenvs/$env_name/bin/activate
-}
+
 els () {
     if [ $# -eq 1 ]; then
-        env_ls | grep $1
+        env_ls | grep "$1"
     else
         env_ls
     fi
 }
 
-edcvb() {
-  # update python version of venv
-  # deletes the current python version venv
-  # installs requirements.txt to the new venv
-  if [ -n "$1" ]; then
-    current_version=$(pyenv version-name)
+edcvb () {
+    # Update Python version of venv
+    # Deletes the current Python version venv
+    # Installs requirements.txt to the new venv
+    if [ -n "$1" ]; then
+        local current_version
+        current_version=$(pyenv version-name)
 
-    # Check if there is an active virtual environment
-    if [ -n "$VIRTUAL_ENV" ]; then
-      echo "Deactivating & deleting current virtual environment..."
-      se && ed
-    fi
+        # Check if there is an active virtual environment
+        if [ -n "$VIRTUAL_ENV" ]; then
+            echo "Deactivating & deleting current virtual environment..."
+            se && ed
+        fi
 
-    if [[ ! "$current_version" =~ ^$1 ]]; then
-
-      echo "Switching to pyenv version: $1" && \
-      pyenv local "$1" && \
-      edcv && \
-      pir
+        if [[ ! "$current_version" =~ ^$1 ]]; then
+            echo "Switching to pyenv version: $1"
+            pyenv local "$1" && edcv
+        else
+            echo "Already using pyenv version starting with: $current_version."
+            if [ -z "$VIRTUAL_ENV" ]; then
+                edcv
+            fi
+        fi
     else
-      echo "Already using pyenv version starting with: $current_version."
-      if [ -z "$VIRTUAL_ENV" ]; then
-        edcv
-      fi
+        echo "Please provide a pyenv version as an argument."
     fi
-  else
-    echo "Please provide a pyenv version as an argument."
-  fi
-  echo current version:
-  python --version
+    echo "Current version:"
+    python --version
+}
+
+# reinstall currently active pyenv version in venv
+edcvr() {
+    ed
+    edcv
+}
+
+# install from pyproject.toml in venv
+edcvpr() {
+    ed
+    edcvp
+}
+edcvp() {
+    # --- Check for list flag ---
+    if [[ "$1" == "--list" || "$1" == "-l" ]]; then
+        if [ ! -f "pyproject.toml" ]; then
+            echo "Error: pyproject.toml not found in the current directory." >&2
+            return 1
+        fi
+        echo "Available optional dependency groups:"
+        # Use awk to parse the pyproject.toml file.
+        # - Start processing when '[project.optional-dependencies]' is found.
+        # - Stop processing when another section starts (lines with '[').
+        # - Inside the section, only process lines that are NOT indented and
+        #   contain an '=', which signifies a key definition.
+        awk '
+            /^\[project.optional-dependencies\]/ { in_section=1; next }
+            in_section && /^\[/ { in_section=0 }
+            in_section && !/^[ \t]/ && /=/ {
+                # Split the line at the "=" to isolate the key.
+                split($0, parts, "=")
+                key = parts[1]
+                # Remove trailing whitespace from the key.
+                gsub(/[ \t]+$/, "", key)
+                print " - " key
+            }
+        ' pyproject.toml
+        return 0
+    fi
+
+    # --- Standard venv creation ---
+    # These functions are assumed to be defined elsewhere in your shell profile.
+    echo "Creating and activating new virtual environment..."
+    edcv
+
+    # --- Project installation ---
+    if [ -f "pyproject.toml" ]; then
+        # If arguments are provided, they are treated as dependency groups.
+        if [ $# -gt 0 ]; then
+            # The arguments are comma-separated group names.
+            local groups="$1"
+            echo "Installing project with extra groups: [$groups]"
+            uv pip install -e ".[$groups]"
+        else
+            # Default behavior: install without extras.
+            echo "Installing project from pyproject.toml..."
+            uv pip install -e .
+        fi
+    else
+        echo "Warning: pyproject.toml not found. Cannot install project dependencies."
+    fi
+}
+
+
+# intall currently active pyenv version in jupyter kernelspec
+edcvj() {
+    edcv
+    uv pip install ipykernel || pip install ipykernel
+    # uv pip install jupyterlab || pip install jupyterlab
+    python -m ipykernel install --user --name=$(basename $VIRTUAL_ENV) --display-name "Python ($(basename $VIRTUAL_ENV))"
+    jupyter lab
 }

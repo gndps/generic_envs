@@ -1,12 +1,22 @@
 # Define base path for all environments
 export PYENV_TAKEOUT_PATH="$HOME/pyenvs"
 
-# Helper to get hashed env name from full path
 get_env_name_from_path() {
-  local full_path="$(pwd)"
+  local target_dir="${1:-$(pwd)}"
+  # Resolve to absolute path to ensure the hash is consistent
+  local full_path
+  full_path=$(cd "$target_dir" && pwd)
+  
   local base_name="$(basename "$full_path")"
   local hash_suffix=$(echo -n "$full_path" | sha1sum | cut -c1-8)
   echo "${base_name}-${hash_suffix}"
+}
+
+# NEW: Function to get the full venv path for a specific directory
+get_venv_path_for_dir() {
+  local target_dir="${1:-$(pwd)}"
+  local env_name=$(get_env_name_from_path "$target_dir")
+  echo "$PYENV_TAKEOUT_PATH/$env_name"
 }
 
 alias se='[[ -n "$VIRTUAL_ENV" ]] && deactivate'

@@ -1,3 +1,29 @@
+# Function to reindex all projects to maintain sequential indices
+projenv_reindex() {
+    local temp_dir="$PROJECT_STATES_DIR/.tmp_reindex"
+    mkdir -p "$temp_dir"
+    
+    # Get all project files sorted by their current index
+    local files=($(ls "$PROJECT_STATES_DIR" | grep -v '^\.tmp_reindex$' | sort -t_ -k1 -n))
+    local new_index=1
+    
+    # Reindex each file
+    for file in "${files[@]}"; do
+        local alias="${file#*_}"
+        local old_path="$PROJECT_STATES_DIR/$file"
+        local new_file="${new_index}_$alias"
+        local new_path="$temp_dir/$new_file"
+        
+        cp "$old_path" "$new_path"
+        ((new_index++))
+    done
+    
+    # Replace old files with reindexed ones
+    rm -f "$PROJECT_STATES_DIR"/*_*
+    mv "$temp_dir"/* "$PROJECT_STATES_DIR/" 2>/dev/null
+    rmdir "$temp_dir"
+}
+
 # Function to initialize projenv
 projenv_init() {
     local project_alias=$1
@@ -9,6 +35,15 @@ projenv_init() {
         project_path="\$HOME/${project_path#$home_dir}"
     fi
 
+    # Check if project alias already exists
+    if ls "$PROJECT_STATES_DIR" | grep -q "_${project_alias}$"; then
+        echo "Error: Project alias '$project_alias' already exists."
+        return 1
+    fi
+
+    # Reindex first to ensure sequential indices
+    projenv_reindex
+    
     local num_files=$(ls "$PROJECT_STATES_DIR" | wc -l)
     local new_index=$((num_files + 1))
     local new_file="$PROJECT_STATES_DIR/${new_index}_$project_alias"
@@ -19,6 +54,11 @@ projenv_init() {
 
 # Function to list all managed projects
 projenv_list() {
+    # Reindex to ensure consistency
+    if [[ -d "$PROJECT_STATES_DIR" && -n "$(ls -A "$PROJECT_STATES_DIR")" ]]; then
+        projenv_reindex
+    fi
+    
     if [[ -d "$PROJECT_STATES_DIR" && -n "$(ls -A "$PROJECT_STATES_DIR")" ]]; then
         local current_project=$(cat "$PROJECT_ENV_ROOT/active_project" 2>/dev/null)
         local current_pwd=$(pwd)
@@ -69,9 +109,14 @@ projenv_list() {
     if [[ -d "$PROFILES_DIR" && -n "$(ls -A "$PROFILES_DIR")" ]]; then
         echo ""
         echo "Available project env profiles:"
-        for profile in "$PROFILES_DIR"/*; do
-            echo "$(basename "$profile")"
+        local profiles=($(ls -1 "$PROFILES_DIR" 2>/dev/null | sort))
+        local i=1
+        for profile in "${profiles[@]}"; do
+            echo "  [$i] $profile"
+            ((i++))
         done
+        echo ""
+        echo "Load with: projenv profile load [name|index] or pload [name|index]"
     else
         echo ""
         echo "No project env profiles found."
@@ -149,6 +194,9 @@ projenv_remove() {
     if [[ -n "$target_file" ]]; then
         rm -f "$PROJECT_STATES_DIR/$target_file"
         echo "Removed project: $identifier"
+        
+        # Reindex after removal to maintain sequential indices
+        projenv_reindex
     else
         echo "Error: Project $identifier does not exist."
     fi

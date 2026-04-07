@@ -1,12 +1,45 @@
-#!/bin/bash
+# Profile management functions
 
 # Load a profile
-projenv_load() {
-    local profile_name="$1"
+projenv_profile_load() {
+    local input="$1"
+    local profile_name=""
+    
+    # Check if input is a number (index)
+    if [[ "$input" =~ ^[0-9]+$ ]]; then
+        # Get all profiles sorted
+        local profiles=($(ls -1 "$PROFILES_DIR" 2>/dev/null | sort))
+        local index=$((input - 1))  # Convert to 0-based index
+        
+        if [[ $index -ge 0 && $index -lt ${#profiles[@]} ]]; then
+            profile_name="${profiles[$index]}"
+        else
+            echo "Error: Invalid index '$input'."
+            echo ""
+            echo "Available project env profiles:"
+            local i=1
+            for profile in "${profiles[@]}"; do
+                echo "  [$i] $profile"
+                ((i++))
+            done
+            return 1
+        fi
+    else
+        profile_name="$input"
+    fi
+    
     local profile_dir="$PROFILES_DIR/$profile_name"
 
     if [[ ! -d "$profile_dir" ]]; then
         echo "Error: Profile '$profile_name' does not exist."
+        echo ""
+        echo "Available project env profiles:"
+        local profiles=($(ls -1 "$PROFILES_DIR" 2>/dev/null | sort))
+        local i=1
+        for profile in "${profiles[@]}"; do
+            echo "  [$i] $profile"
+            ((i++))
+        done
         return 1
     fi
 
@@ -20,10 +53,15 @@ projenv_load() {
 
     # Copy the project states from the profile
     cp -r "$profile_dir"/* "$PROJECT_STATES_DIR"
+    
+    # Set as active profile
+    echo "$profile_name" > "$PROJECT_ENV_ROOT/active_profile" 2>/dev/null
+    
+    echo "Loaded profile: $profile_name"
 }
 
-# Save the current state to a profile
-projenv_save() {
+# Create a new profile (renamed from save)
+projenv_profile_create() {
     local profile_name="$1"
     local force_overwrite="$2"
     local profile_dir="$PROFILES_DIR/$profile_name"
@@ -48,4 +86,79 @@ projenv_save() {
 
     # Copy the current project states to the profile
     cp -r "$PROJECT_STATES_DIR"/* "$profile_dir"
+    
+    # Set as active profile
+    echo "$profile_name" > "$PROJECT_ENV_ROOT/active_profile" 2>/dev/null
+    
+    echo "Created profile: $profile_name"
+}
+
+# Update an existing profile (defaults to active profile)
+projenv_profile_update() {
+    local profile_name="$1"
+    local force_overwrite="$2"
+    
+    # If no profile name provided, try to get active profile
+    if [[ -z "$profile_name" ]]; then
+        profile_name=$(cat "$PROJECT_ENV_ROOT/active_profile" 2>/dev/null)
+        if [[ -z "$profile_name" ]]; then
+            echo "Error: No active profile found. Please specify a profile name."
+            return 1
+        fi
+        echo "Updating active profile: $profile_name"
+    fi
+    
+    local profile_dir="$PROFILES_DIR/$profile_name"
+
+    if [[ ! -d "$profile_dir" ]]; then
+        echo "Error: Profile '$profile_name' does not exist. Use 'create' to create it first."
+        return 1
+    fi
+
+    if [[ ! -d "$PROJECT_STATES_DIR" ]]; then
+        echo "Error: Project states directory does not exist."
+        return 1
+    fi
+
+    # Remove the existing profile
+    rm -rf "$profile_dir"
+
+    # Create the profile directory
+    mkdir -p "$profile_dir"
+
+    # Copy the current project states to the profile
+    cp -r "$PROJECT_STATES_DIR"/* "$profile_dir"
+    
+    echo "Updated profile: $profile_name"
+}
+
+# List all profiles
+projenv_profile_list() {
+    if [[ -d "$PROFILES_DIR" && -n "$(ls -A "$PROFILES_DIR")" ]]; then
+        local active_profile=$(cat "$PROJECT_ENV_ROOT/active_profile" 2>/dev/null)
+        echo "Available project env profiles:"
+        local profiles=($(ls -1 "$PROFILES_DIR" 2>/dev/null | sort))
+        local i=1
+        for profile in "${profiles[@]}"; do
+            local prefix=""
+            if [[ "$profile" == "$active_profile" ]]; then
+                prefix="* "
+            fi
+            echo "  [$i] $prefix$profile"
+            ((i++))
+        done
+        echo ""
+        echo "Load with: projenv profile load [name|index] or pload [name|index]"
+    else
+        echo "No project env profiles found."
+    fi
+}
+
+# Legacy functions for backward compatibility
+projenv_load() {
+    projenv_profile_load "$@"
+}
+
+projenv_save() {
+    projenv_profile_create "$@"
 }

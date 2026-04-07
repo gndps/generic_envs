@@ -34,9 +34,13 @@ projenv_help() {
 
     echo ""
     echo "  ----- Profile Ops -----"
-    echo "  * load profile_name            Load a profile"
-    echo "  * save profile_name            Save the current state to a profile"
-    echo "  * update profile_name          Update an existing profile (overwrites existing profile)"
+    echo "  * profile create profile_name   Create a new profile (save current state)"
+    echo "  * profile load [name|index]     Load a profile by name or index"
+    echo "  * profile update [name]         Update an existing profile (defaults to active)"
+    echo "  * profile list                  List all profiles with indices"
+    echo "  * load profile_name             Load a profile (legacy)"
+    echo "  * save profile_name             Save a profile (legacy)"
+    echo "  * update profile_name           Update a profile (legacy)"
 }
 
 
@@ -99,9 +103,67 @@ projenv() {
         list_files)
             projenv_list_files
             ;;
+        profile)
+            if [[ -n "$2" ]]; then
+                case "$2" in
+                    --help|-h)
+                        echo "Profile Management Commands:"
+                        echo "  create profile_name      Create a new profile (save current state)"
+                        echo "  load [name|index]        Load a profile by name or index"
+                        echo "  update [name]            Update an existing profile (defaults to active)"
+                        echo "  list                     List all profiles with indices"
+                        echo ""
+                        echo "Examples:"
+                        echo "  projenv profile create myprofile"
+                        echo "  projenv profile load myprofile"
+                        echo "  projenv profile load 1"
+                        echo "  projenv profile update"
+                        echo "  projenv profile update myprofile"
+                        echo "  projenv profile list"
+                        echo ""
+                        echo "Aliases:"
+                        echo "  pcreate name    -> projenv profile create name"
+                        echo "  pload [name|index] -> projenv profile load [name|index]"
+                        echo "  pupdate [name]  -> projenv profile update [name]"
+                        echo "  plist           -> projenv profile list"
+                        ;;
+                    create)
+                        if [[ -n "$3" ]]; then
+                            projenv_profile_create "$3"
+                        else
+                            echo "Error: Profile name is required."
+                            projenv_help
+                        fi
+                        ;;
+                    load)
+                        if [[ -n "$3" ]]; then
+                            projenv_profile_load "$3"
+                        else
+                            echo "Error: Profile name or index is required."
+                            projenv_help
+                        fi
+                        ;;
+                    update)
+                        projenv_profile_update "$3"
+                        ;;
+                    list)
+                        projenv_profile_list
+                        ;;
+                    *)
+                        echo "Error: Unknown profile command '$2'."
+                        echo "Use 'projenv profile --help' for profile command help."
+                        projenv_help
+                        ;;
+                esac
+            else
+                echo "Error: Profile command is required."
+                echo "Use 'projenv profile --help' for profile command help."
+                projenv_help
+            fi
+            ;;
         load)
             if [[ -n "$2" ]]; then
-                projenv_load "$2"
+                projenv_profile_load "$2"
             else
                 echo "Error: Profile name is required."
                 projenv_help
@@ -109,19 +171,14 @@ projenv() {
             ;;
         save)
             if [[ -n "$2" ]]; then
-                projenv_save "$2"
+                projenv_profile_create "$2"
             else
                 echo "Error: Profile name is required."
                 projenv_help
             fi
             ;;
         update)
-            if [[ -n "$2" ]]; then
-                projenv_save "$2" "-f"
-            else
-                echo "Error: Profile name is required."
-                projenv_help
-            fi
+            projenv_profile_update "$2"
             ;;
         *)
             projenv_help
@@ -149,9 +206,10 @@ alias pls="projenv list"
 alias ikm="projenv list" # vertical downwards keyboard walk
 alias pls="projenv list"
 alias pin="projenv init"
-alias pload="projenv load"
-alias psave="projenv save"
-alias pupdate="projenv update"
+alias pload="projenv profile load"
+alias pcreate="projenv profile create"
+alias pupdate="projenv profile update"
+alias plist="projenv profile list"
 alias ikmn="projenv init" # keyboard walk consistent with other projenv aliases
 alias prm="projenv remove"
 alias cp_="projenv cp"

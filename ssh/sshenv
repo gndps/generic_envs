@@ -469,6 +469,78 @@ sshenv_new() {
     sshenv_copy
 }
 
+sshenv_check_and_install_rsync() {
+    local host="$1"
+    
+    # Check if rsync is available on remote
+    if ssh "$host" "command -v rsync" &>/dev/null; then
+        return 0
+    fi
+    
+    echo "rsync not found on $host. Detecting OS and attempting installation..."
+    
+    # Detect OS and install rsync
+    local os_info=$(ssh "$host" "cat /etc/os-release 2>/dev/null || uname -s")
+    
+    if echo "$os_info" | grep -qi "ubuntu\|debian"; then
+        echo "Detected Debian/Ubuntu. Installing rsync..."
+        if ssh "$host" "sudo apt-get update && sudo apt-get install -y rsync" 2>/dev/null; then
+            echo "Successfully installed rsync on $host"
+            return 0
+        else
+            echo "ERROR: Failed to install rsync automatically."
+            echo "Please run on $host: sudo apt-get update && sudo apt-get install -y rsync"
+            return 1
+        fi
+    elif echo "$os_info" | grep -qi "centos\|rhel\|fedora\|rocky\|alma"; then
+        echo "Detected RHEL/CentOS/Fedora. Installing rsync..."
+        if ssh "$host" "sudo yum install -y rsync || sudo dnf install -y rsync" 2>/dev/null; then
+            echo "Successfully installed rsync on $host"
+            return 0
+        else
+            echo "ERROR: Failed to install rsync automatically."
+            echo "Please run on $host: sudo yum install -y rsync (or sudo dnf install -y rsync)"
+            return 1
+        fi
+    elif echo "$os_info" | grep -qi "arch"; then
+        echo "Detected Arch Linux. Installing rsync..."
+        if ssh "$host" "sudo pacman -S --noconfirm rsync" 2>/dev/null; then
+            echo "Successfully installed rsync on $host"
+            return 0
+        else
+            echo "ERROR: Failed to install rsync automatically."
+            echo "Please run on $host: sudo pacman -S rsync"
+            return 1
+        fi
+    elif echo "$os_info" | grep -qi "alpine"; then
+        echo "Detected Alpine Linux. Installing rsync..."
+        if ssh "$host" "sudo apk add rsync" 2>/dev/null; then
+            echo "Successfully installed rsync on $host"
+            return 0
+        else
+            echo "ERROR: Failed to install rsync automatically."
+            echo "Please run on $host: sudo apk add rsync"
+            return 1
+        fi
+    elif echo "$os_info" | grep -qi "darwin"; then
+        echo "ERROR: rsync not found on macOS host $host"
+        echo "Please install rsync using: brew install rsync"
+        return 1
+    else
+        echo "ERROR: Could not detect OS on $host or unsupported OS"
+        echo "OS Info: $os_info"
+        echo ""
+        echo "Please install rsync manually on $host using your package manager:"
+        echo "  - Debian/Ubuntu: sudo apt-get install rsync"
+        echo "  - RHEL/CentOS:   sudo yum install rsync"
+        echo "  - Fedora:        sudo dnf install rsync"
+        echo "  - Arch:          sudo pacman -S rsync"
+        echo "  - Alpine:        sudo apk add rsync"
+        echo "  - macOS:         brew install rsync"
+        return 1
+    fi
+}
+
 sshenv_inject() {
     local host=""
     local profiles=()
@@ -497,6 +569,12 @@ sshenv_inject() {
 
     if [ -z "$host" ] || [ ${#profiles[@]} -eq 0 ]; then
         echo "Both --host and --profile or --profiles options are required"
+        return 1
+    fi
+
+    # Check and install rsync if needed
+    if ! sshenv_check_and_install_rsync "$host"; then
+        echo "Cannot proceed without rsync on remote host"
         return 1
     fi
 
